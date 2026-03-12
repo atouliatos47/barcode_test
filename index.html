@@ -10,22 +10,16 @@
         .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); min-height: 85vh; }
         #reader { width: 100%; border-radius: 8px; background: #000; margin-bottom: 20px; }
         
-        /* Input Form Styles */
-        .log-form { 
-            display: none; 
-            text-align: left; 
-            background: #f9fff0; 
-            padding: 20px; 
-            border: 2px solid #95C11F; 
-            border-radius: 10px; 
-            margin-top: 15px; 
-        }
-        .log-form label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #2D4A5C; }
-        .log-form input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
+        .log-form { display: none; text-align: left; background: #f9fff0; padding: 20px; border: 2px solid #95C11F; border-radius: 10px; margin-top: 15px; }
+        .use-mode { border-color: #ef4444; background: #fff5f5; }
+        
+        label { display: block; font-size: 13px; font-weight: bold; margin-bottom: 5px; color: #2D4A5C; }
+        input { width: 100%; padding: 12px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
         
         button { width: 100%; padding: 15px; background: #2D4A5C; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
-        .save-btn { background: #95C11F; margin-top: 5px; }
-        .cancel-btn { background: #e2e5ea; color: #333; margin-top: 10px; }
+        .save-btn { background: #95C11F; }
+        .use-btn { background: #ef4444; }
+        .cancel-btn { background: #e2e5ea; color: #333; }
     </style>
 </head>
 <body>
@@ -35,92 +29,122 @@
     <button id="startBtn" onclick="startScanner()">Start Camera</button>
 
     <div id="logForm" class="log-form">
-        <div style="background: #2D4A5C; color: white; padding: 10px; border-radius: 5px; margin-bottom: 20px; font-size: 14px;">
-            <strong>Scanned Barcode:</strong> <span id="scannedCode"></span>
-        </div>
+        <div id="statusHeader" style="padding: 10px; border-radius: 5px; margin-bottom: 20px; font-size: 14px; font-weight: bold; color: white;"></div>
         
-        <label>ITEM NAME</label>
-        <input type="text" id="itemName" placeholder="e.g. Proximity Sensor">
+        <div id="newFields">
+            <label>ITEM NAME</label>
+            <input type="text" id="itemName">
+            <label>STORAGE LOCATION</label>
+            <input type="text" id="itemLoc">
+        </div>
 
-        <label>QUANTITY</label>
-        <input type="number" id="itemQty" value="1" onfocus="this.select()">
+        <div id="qtySection">
+            <label id="qtyLabel">QUANTITY TO ADD</label>
+            <input type="number" id="itemQty" value="1" onfocus="this.select()">
+        </div>
 
-        <label>STORAGE LOCATION</label>
-        <input type="text" id="itemLoc" placeholder="e.g. Press 4, Bin B2">
-
-        <button class="save-btn" onclick="saveToLocalList()">Save to Local List</button>
-        <button class="cancel-btn" onclick="resetScanner()">Cancel / Scan Again</button>
+        <button id="actionBtn" class="save-btn" onclick="processEntry()"></button>
+        <button class="cancel-btn" onclick="resetScanner()">Cancel</button>
     </div>
 
     <div id="history" style="margin-top:30px; text-align:left;">
-        <h4 style="border-bottom: 2px solid #2D4A5C; padding-bottom:5px; color: #2D4A5C;">Session Log (Local)</h4>
-        <div id="historyList"></div>
+        <h4 style="border-bottom: 2px solid #2D4A5C; padding-bottom:5px; color: #2D4A5C;">Stored Inventory (Phone Memory)</h4>
+        <div id="inventoryList"></div>
     </div>
 </div>
 
 <script>
     const html5QrCode = new Html5Qrcode("reader");
     let currentBarcode = "";
+    let inventory = JSON.parse(localStorage.getItem('spare_lab_inv') || '{}');
 
     function onScanSuccess(decodedText) {
         currentBarcode = decodedText;
-        // Automatically stop camera to show the form clearly
         html5QrCode.stop().then(() => {
             document.getElementById('startBtn').style.display = 'none';
             document.getElementById('logForm').style.display = 'block';
-            document.getElementById('scannedCode').innerText = decodedText;
             
-            // Focus on the first input automatically
-            setTimeout(() => document.getElementById('itemName').focus(), 100);
+            const existing = inventory[currentBarcode];
+            const header = document.getElementById('statusHeader');
+            const newFields = document.getElementById('newFields');
+            const actionBtn = document.getElementById('actionBtn');
+            const qtyLabel = document.getElementById('qtyLabel');
+
+            if (existing) {
+                // ITEM EXISTS - USE MODE
+                header.style.background = "#ef4444";
+                header.innerHTML = `ALREADY IN STOCK: ${existing.name}<br>Current Qty: ${existing.qty}`;
+                newFields.style.display = "none";
+                qtyLabel.innerText = "HOW MANY TO USE?";
+                actionBtn.innerText = "Deduct from Stock";
+                actionBtn.className = "use-btn";
+                document.getElementById('logForm').classList.add('use-mode');
+            } else {
+                // NEW ITEM - ADD MODE
+                header.style.background = "#2D4A5C";
+                header.innerText = "NEW ITEM SCANNED: " + decodedText;
+                newFields.style.display = "block";
+                qtyLabel.innerText = "INITIAL QUANTITY";
+                actionBtn.innerText = "Save New Item";
+                actionBtn.className = "save-btn";
+                document.getElementById('logForm').classList.remove('use-mode');
+            }
             
             if (navigator.vibrate) navigator.vibrate(100);
+            renderInventory();
         });
     }
 
-    function startScanner() {
-        html5QrCode.start(
-            { facingMode: "environment" }, 
-            { fps: 10, qrbox: { width: 250, height: 150 } }, 
-            onScanSuccess
-        ).catch(err => alert("Camera Error: " + err));
-    }
-
-    function saveToLocalList() {
-        const name = document.getElementById('itemName').value.trim();
-        const qty = document.getElementById('itemQty').value;
-        const loc = document.getElementById('itemLoc').value.trim();
-
-        if(!name || !loc) { 
-            alert("Please fill in both Name and Location"); 
-            return; 
+    function processEntry() {
+        const qtyInput = document.getElementById('itemQty');
+        const qtyVal = parseInt(qtyInput.value) || 0;
+        
+        if (inventory[currentBarcode]) {
+            // Deduct logic
+            if (qtyVal > inventory[currentBarcode].qty) {
+                alert("Error: Not enough stock!");
+                return;
+            }
+            inventory[currentBarcode].qty -= qtyVal;
+        } else {
+            // Add logic
+            const name = document.getElementById('itemName').value.trim();
+            const loc = document.getElementById('itemLoc').value.trim();
+            if (!name || !loc) { alert("Fill all fields"); return; }
+            
+            inventory[currentBarcode] = { name, loc, qty: qtyVal };
         }
 
-        // Add to the visual list on screen
-        const list = document.getElementById('historyList');
-        const entry = document.createElement('div');
-        entry.style.cssText = "background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px; font-size: 14px; box-shadow: 2px 2px 5px rgba(0,0,0,0.05);";
-        
-        entry.innerHTML = `
-            <div style="color: #95C11F; font-weight: bold; margin-bottom: 4px;">Barcode: ${currentBarcode}</div>
-            <strong>Item:</strong> ${name}<br>
-            <strong>Qty:</strong> ${qty} pcs<br>
-            <strong>Loc:</strong> ${loc}
-        `;
-        
-        list.prepend(entry);
-        alert("Item Logged Locally!");
+        localStorage.setItem('spare_lab_inv', JSON.stringify(inventory));
+        renderInventory();
         resetScanner();
+    }
+
+    function renderInventory() {
+        const list = document.getElementById('inventoryList');
+        list.innerHTML = "";
+        for (const [code, data] of Object.entries(inventory)) {
+            const entry = document.createElement('div');
+            entry.style.cssText = "background: #fff; padding: 12px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px; font-size: 14px;";
+            entry.innerHTML = `<strong>${data.name}</strong> (${code})<br>Stock: <b>${data.qty}</b> | Loc: ${data.loc}`;
+            list.appendChild(entry);
+        }
+    }
+
+    function startScanner() {
+        html5QrCode.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, onScanSuccess);
     }
 
     function resetScanner() {
         document.getElementById('logForm').style.display = 'none';
         document.getElementById('startBtn').style.display = 'block';
-        
-        // Clear inputs for next scan
         document.getElementById('itemName').value = "";
-        document.getElementById('itemQty').value = "1";
         document.getElementById('itemLoc').value = "";
+        document.getElementById('itemQty').value = "1";
     }
+
+    // Load initial list
+    renderInventory();
 </script>
 </body>
 </html>
