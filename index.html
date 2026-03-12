@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Barcode Lab 🔬</title>
+    <link rel="manifest" href="manifest.json">
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { font-family: sans-serif; background: #f0f2f5; padding: 20px; text-align: center; margin: 0; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); min-height: 90vh; }
+        #reader { width: 100%; border-radius: 8px; background: #000; margin-bottom: 20px; }
+        .result { padding: 15px; border: 2px solid #95C11F; border-radius: 8px; background: #f9fff0; margin-top: 10px; word-break: break-all; }
+        button { width: 100%; padding: 15px; background: #2D4A5C; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Barcode Lab 🔬</h2>
+    <div id="reader"></div>
+    <button onclick="startScanner()">Start Camera</button>
+    <div id="result" class="result" style="display:none;">
+        <strong>Scan Result:</strong> <br>
+        <span id="scanText" style="font-size: 20px; color: #2D4A5C;"></span>
+    </div>
+</div>
+
+<script>
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+    }
+
+    const html5QrCode = new Html5Qrcode("reader");
+    
+    function onScanSuccess(decodedText) {
+        document.getElementById('result').style.display = 'block';
+        document.getElementById('scanText').innerText = decodedText;
+        if (navigator.vibrate) navigator.vibrate(100);
+    }
+
+    function startScanner() {
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            { fps: 10, qrbox: { width: 250, height: 150 } }, 
+            onScanSuccess
+        ).catch(err => {
+            alert("Camera Error: Check if you are using HTTPS. Error: " + err);
+        });
+    }
+</script>
+</body>
+</html>
